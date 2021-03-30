@@ -1,11 +1,11 @@
 import mne
-from mne import viz
 import numpy as np
 from matplotlib import pyplot as plt
 import math
 from scipy import stats, signal
 
 # general constants
+# TODO: check how to handle 128 Hz
 sampling_rate = 1000
 min_distance = 200  # minimal distance for 'different' spikes - in miliseconds
 
@@ -32,34 +32,39 @@ high_pass = 150
 
 min_spike_length_ms = 5  # a spike is detected if there are points for X ms passing the threshold - in ms, based on Andrillon et al
 conditions_true_if_any = False
-percentageOfNansAllowedArounsSpike = 0.1  # how many NaNs are allowed in the vicinity of the spike(vicinity=minDistSpikes / 2 before and after)
+percentageOfNansAllowedAroundSpike = 0.1  # how many NaNs are allowed in the vicinity of the spike(vicinity=minDistSpikes / 2 before and after)
 HighBandPassScore = 11  # this is for debugging - finding especially high STDs for HP
 
 
-def get_markers(data, curr_block, points_above_thresh, z_score):
+def get_markers(curr_block, points_above_thresh, z_score):
     max_markers_index = []
     max_marker_value = []
 
+    # get indexes from z_score values
     if len(points_above_thresh) > 0:
         index_above_threshold = (z_score > threshold_amp).nonzero()[0]
 
         # find max markers
-        counter = 0
+        counter = 1
         for j in range(len(index_above_threshold)):
             # check that the next index is the same spike
             if j + 1 < len(index_above_threshold) and index_above_threshold[j + 1] - index_above_threshold[j] == 1:
                 counter += 1
             # the current spike finished
             else:
-                if counter <= 1:
-                    value = curr_block[index_above_threshold[j]]
+                if counter == 1:
+                    max_marker_value.append(curr_block[index_above_threshold[j]])
+                    max_markers_index.append(index_above_threshold[j])
                 else:
-                    value = curr_block[index_above_threshold[j - counter]: index_above_threshold[j] + 1].max()
-                max_marker_value.append(value)
-                max_markers_index.append(np.where(data == value)[0][0])
-                counter = 1
+                    # check if the peak is positive or negative and append it's value
+                    max_value = curr_block[index_above_threshold[j - counter + 1]: index_above_threshold[j] + 1].max()
+                    min_value = curr_block[index_above_threshold[j - counter + 1]: index_above_threshold[j] + 1].min()
+                    value = max_value if abs(max_value) > abs(min_value) else min_value
+                    max_marker_value.append(value)
+                    max_markers_index.append(np.intersect1d(np.where(curr_block == value)[0], index_above_threshold[j - counter + 1: j + 1])[0])
+                    counter = 1
 
-    return max_markers_index, max_marker_value
+    return np.array(max_markers_index), np.array(max_marker_value)
 
 
 def detect(data):
@@ -90,29 +95,42 @@ def detect(data):
             points_above_thresh_env = z_score_env[z_score_env > threshold_env]
 
         # combine thresholds and get spikes points
-        max_markers_index_amp, max_marker_value_amp = get_markers(data, curr_block, points_above_thresh_amp, z_score_amp)
-        max_markers_index_grad, max_marker_value_grad = get_markers(data, curr_block, points_above_thresh_grad, z_score_grad)
-        max_markers_index_env, max_marker_value_env = get_markers(data, curr_block, points_above_thresh_env, z_score_env)
+        max_markers_index_amp, max_marker_value_amp = get_markers(curr_block, points_above_thresh_amp, z_score_amp)
+        max_markers_index_grad, max_marker_value_grad = get_markers(curr_block, points_above_thresh_grad, z_score_grad)
+        max_markers_index_env, max_marker_value_env = get_markers(curr_block, points_above_thresh_env, z_score_env)
 
+        # set indexes to the total data
+        max_markers_index_amp = np.array(max_markers_index_amp) + i * points_in_block
+        max_markers_index_grad = np.array(max_markers_index_grad) + i * points_in_block
+        max_markers_index_env = np.array(max_markers_index_env) + i * points_in_block
+
+        # find the points that are shared in all thresholds
         common_index = np.intersect1d(max_markers_index_amp, max_markers_index_grad)
         all_common_index = np.intersect1d(common_index, max_markers_index_env)
-        all_common_value = data[all_common_index] if len(common_index) > 0 else []
+        all_common_value = data[all_common_index] if len(all_common_index) > 0 else []
+        plt.scatter(all_common_index, all_common_value, marker='D', color='black')
 
-        plt.scatter(all_common_index, all_common_value, marker='D', color='green')
-        plt.scatter(np.setdiff1d(max_markers_index_amp, all_common_index), np.setdiff1d(max_marker_value_amp, all_common_value), marker='X', color='black')
-        plt.scatter(np.setdiff1d(max_markers_index_grad, all_common_index), np.setdiff1d(max_marker_value_grad, all_common_value), marker='P', color='red')
-        plt.scatter(np.setdiff1d(max_markers_index_env, all_common_index), np.setdiff1d(max_marker_value_env, all_common_value), marker='o', color='blue')
+        # remove the shared points
+        max_markers_index_amp = max_markers_index_amp[~np.in1d(max_markers_index_amp, all_common_index)]
+        max_markers_index_grad = max_markers_index_grad[~np.in1d(max_markers_index_grad, all_common_index)]
+        max_markers_index_env = max_markers_index_env[~np.in1d(max_markers_index_env, all_common_index)]
+
+        # draw
+        plt.scatter(max_markers_index_amp, data[max_markers_index_amp] if len(max_markers_index_amp) > 0 else [], marker='X', color='fuchsia')
+        plt.scatter(max_markers_index_grad, data[max_markers_index_grad] if len(max_markers_index_grad) > 0 else [], marker='P', color='red')
+        plt.scatter(max_markers_index_env, data[max_markers_index_env] if len(max_markers_index_env) > 0 else [], marker='o', color='blue', s=15)
+        plt.legend(['signal', 'all', 'amplitude', 'gradient', 'envelope'])
         # plt.scatter(max_markers_index_env, max_marker_value_env, marker='X', color='black')
 
     print('cool')
 
-    return True
+    return plt
 
 
 raw = mne.io.read_raw_edf(
     '/Users/rotemfalach/Documents/University/lab/EDFs_forRotem/P402_staging_PSG_and_intracranial_Mref_correct.txt.edf')
 raw.pick_channels(['RAH1M'])
-raw.crop(tmin=1900, tmax=2000)
+raw.crop(tmin=1000, tmax=7000)
 
 # viz.plot_raw(raw, duration=30, scalings=dict(eeg=35))
 # plt.plot(raw.get_data()[0])
