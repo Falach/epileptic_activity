@@ -6,6 +6,7 @@ import math
 from scipy import stats, signal
 import itertools
 import pandas as pd
+from datetime import datetime
 # mpl.use('Agg')
 
 # channels names: AH= anterior hippocampus, EC=entorhinal cortex, PHG = parahippocampal gyrus
@@ -83,11 +84,12 @@ def get_markers(data, index_above_threshold, thresh_type):
     return np.array(max_markers_index), np.array(max_marker_value)
 
 
-def detect(data, sampling_rate):
+def detect(data, sampling_rate, plot=True):
     points_in_block = block_size_sec * sampling_rate
     number_of_blocks = math.floor(len(data) / points_in_block)
     max_markers_index_amp, max_markers_index_grad, max_markers_index_env, all_common_index, all_common_value = [], [], [], [], []
-    plt.plot(data, alpha=0.8)
+    if plot:
+        plt.plot(data, alpha=0.8)
 
     for i in range(number_of_blocks):
         curr_block = data[i * points_in_block: (i + 1) * points_in_block]
@@ -120,53 +122,58 @@ def detect(data, sampling_rate):
                 index_above_threshold_env = (z_score_env > threshold_env).nonzero()[0] + i * points_in_block
                 max_markers_index_env, max_marker_value_env = get_markers(data, index_above_threshold_env, 'env')
 
-        # find the points that are shared in all thresholds
-        common_index = np.intersect1d(max_markers_index_amp, max_markers_index_grad)
-        if len(common_index) > 0:
-            all_common_index = np.intersect1d(common_index, max_markers_index_env)
-            common_spikes_index.extend(all_common_index)
-            all_common_value = data[all_common_index] if len(all_common_index) > 0 else []
+        if plot:
+            # find the points that are shared in all thresholds
+            common_index = np.intersect1d(max_markers_index_amp, max_markers_index_grad)
+            if len(common_index) > 0:
+                all_common_index = np.intersect1d(common_index, max_markers_index_env)
+                common_spikes_index.extend(all_common_index)
+                all_common_value = data[all_common_index] if len(all_common_index) > 0 else []
 
-            # remove the shared points
-            max_markers_index_amp = max_markers_index_amp[~np.in1d(max_markers_index_amp, all_common_index)]
-            max_markers_index_grad = max_markers_index_grad[~np.in1d(max_markers_index_grad, all_common_index)]
-            max_markers_index_env = max_markers_index_env[~np.in1d(max_markers_index_env, all_common_index)]
+                # remove the shared points
+                max_markers_index_amp = max_markers_index_amp[~np.in1d(max_markers_index_amp, all_common_index)]
+                max_markers_index_grad = max_markers_index_grad[~np.in1d(max_markers_index_grad, all_common_index)]
+                max_markers_index_env = max_markers_index_env[~np.in1d(max_markers_index_env, all_common_index)]
 
-        # draw
-        plt.scatter(all_common_index, all_common_value, marker='D', color='black')
-        plt.scatter(max_markers_index_amp, data[max_markers_index_amp] if len(max_markers_index_amp) > 0 else [], marker='X', color='fuchsia')
-        plt.scatter(max_markers_index_grad, data[max_markers_index_grad] if len(max_markers_index_grad) > 0 else [], marker='P', color='red')
-        plt.scatter(max_markers_index_env, data[max_markers_index_env] if len(max_markers_index_env) > 0 else [], marker='o', color='blue', s=15)
-        plt.legend(['signal', 'all', 'amplitude', 'gradient', 'envelope'], loc='upper right')
-        # plt.scatter(max_markers_index_env, max_marker_value_env, marker='X', color='black')
+            # draw
+            plt.scatter(all_common_index, all_common_value, marker='D', color='black')
+            plt.scatter(max_markers_index_amp, data[max_markers_index_amp] if len(max_markers_index_amp) > 0 else [], marker='X', color='fuchsia')
+            plt.scatter(max_markers_index_grad, data[max_markers_index_grad] if len(max_markers_index_grad) > 0 else [], marker='P', color='red')
+            plt.scatter(max_markers_index_env, data[max_markers_index_env] if len(max_markers_index_env) > 0 else [], marker='o', color='blue', s=15)
+            plt.legend(['signal', 'all', 'amplitude', 'gradient', 'envelope'], loc='upper right')
+            # plt.scatter(max_markers_index_env, max_marker_value_env, marker='X', color='black')
 
     print('cool')
-    plt.close()
+    if plot:
+        plt.close()
 
-    return plt
+    return True
 
 
-save_csv = True
-edf = '/Users/rotemfalach/Documents/University/lab/EDFs_forRotem/better_sample_rate/P406_overnightData_filtered.edf'
-id = '406_all'
+start_time = datetime.now()
+mne.set_log_level(False)
+save_csv = False
+# edf = 'results/D036/D036_15_01_21a.edf'
+# edf = 'results/406/P406_overnightData.edf'
+edf = 'results/D037/D037_28_01_21a.edf'
+id = 'D037_RA2'
 # edf = '/Users/rotemfalach/Documents/University/lab/EDFs_forRotem/better_sample_rate/P402_overnightData_1.edf'
 # edf = '/Users/rotemfalach/Documents/University/lab/EDFs_forRotem/P402_staging_PSG_and_intracranial_Mref_correct.txt.edf'
 raw = mne.io.read_raw_edf(edf)
 sampling_rate = int(raw.info['sfreq'])
 # raw.pick_channels(['RAH1M'])  # 402
-# raw.pick_channels(['EEG C3-REF'])  # raw
-raw.pick_channels(['SEEG RAH1-REF'])  # 406
-# raw.crop(tmin=0, tmax=300)
-
+raw.pick_channels(['RA 02'])  # 406
+raw.crop(tmin=0, tmax=1500)
 # format: spike_id: {first_index: 1, last_index: 5, max_amp: 400,, duration:? , sleep_stage: ?}
-# spikes_data = {}
 
 
 # viz.plot_raw(raw, duration=30, scalings=dict(eeg=35))
 # plt.plot(raw.get_data()[0])
 
 data = raw.get_data()[0]
-detect(data, sampling_rate)
+detect(data, sampling_rate, plot=True)
+print('finish detect')
+print(datetime.now() - start_time)
 if save_csv:
     spikes_df = pd.DataFrame(spikes_list, columns=['id', 'threshold_type', 'first_index', 'last_index', 'max_index', 'max_amp'])
     # TODO: convert to milliseconds
@@ -177,4 +184,6 @@ if save_csv:
     # plt.scatter(spikes_df['max_index'], spikes_df['max_amp'])
     # plt.hist(spikes_df['max_amp'])
     spikes_df.to_csv(id + '_spikes.csv', index=False)
+
+
 
