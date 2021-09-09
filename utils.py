@@ -7,7 +7,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from sklearn import preprocessing
 import pandas as pd
-from visbrain.gui import Sleep
+# from visbrain.gui import Sleep
 from scipy.signal import detrend
 # from mff_to_edf import write_edf
 from mnelab.io.writers import write_edf
@@ -314,7 +314,7 @@ def intersect_spikes_union():
     new_spikes_df.to_csv('402_RAH1_union.csv', index=False)
 
 
-intersect_spikes_union()
+# intersect_spikes_union()
 
 
 def intersect_spikes_union_by_50():
@@ -337,3 +337,30 @@ def intersect_spikes_union_by_50():
 
 
 # intersect_spikes_union_by_50()
+
+def union_spikes(spikes_df, min_distance, sr):
+    new_spikes_list = []
+    flag = False
+    any_union = False
+    for i, x in spikes_df.iterrows():
+        for j, y in spikes_df[i + 1:].iterrows():
+            # check distance between the peaks
+            if abs(x['max_index'] - y['max_index']) < sr / (1000 / min_distance):
+                max_index, max_amp = (x['max_index'], x['max_amp']) if x['max_amp'] > y['max_amp'] else (y['max_index'], y['max_amp'])
+                thresh_type = x['threshold_type'] if x['threshold_type'] == y['threshold_type'] else [x['threshold_type'], y['threshold_type']]
+                new_spikes_list.append(
+                    [thresh_type, min(x['first_index'], y['first_index']), max(x['last_index'], y['last_index']),
+                     max_index, max_amp, abs(x['first_index'] - y['first_index'])])
+                flag, any_union = True, True
+        if flag:
+            flag = False
+        else:
+            new_spikes_list.append(x.tolist())
+
+    columns = ['threshold_type', 'first_index', 'last_index', 'max_index', 'max_amp', 'start_diff']
+    if not any_union:
+        columns.remove('start_diff')
+    new_spikes_df = pd.DataFrame(new_spikes_list, columns=columns)
+    new_spikes_df = new_spikes_df.drop_duplicates(subset='max_index')
+    new_spikes_df['duration'] = spikes_df['last_index'] - spikes_df['first_index']
+    return new_spikes_df

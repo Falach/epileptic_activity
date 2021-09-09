@@ -6,12 +6,13 @@ import math
 from scipy import stats, signal
 import itertools
 import pandas as pd
+import utils
 from datetime import datetime
 # mpl.use('Agg')
+mne.set_log_level(False)
 
 # general constants
-min_distance = 200  # minimal distance for 'different' spikes - in miliseconds
-
+min_distance = 50  # minimal distance for 'different' spikes - in miliseconds
 
 # constants for detection based on frequency analysis - the thresholds for the standard deviation are based on the
 # papers Andrillon et al(envelope condition) and Starestina et al(other conditions)
@@ -58,12 +59,12 @@ def get_markers(data, index_above_threshold, thresh_type, sr):
                 index = np.intersect1d(np.where(data == value)[0], index_above_threshold[j - counter + 1: j + 1])[0]
                 max_marker_value.append(value)
                 max_markers_index.append(index)
-                counter = 1
                 curr_spike.extend((index_above_threshold[j], index, value))
                 spikes_list.append(curr_spike)
 
             if j + 1 < len(index_above_threshold):
                 curr_spike = [thresh_type, index_above_threshold[j + 1]]
+                counter = 1
 
     return np.array(max_markers_index), np.array(max_marker_value)
 
@@ -134,27 +135,38 @@ def detect(data, sampling_rate, thresh, plot=True):
     return True
 
 
-
-# TODO: set a folder for each subject!
 # run all start
-subjects_edf = ['/Users/rotemfalach/Documents/University/lab/EDFs_forRotem/402_for_tag.edf']
+print(datetime.now())
+subjects_edf = ['C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\396\\396_for_tag.edf',
+                'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\398\\398_for_tag.edf',
+                'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\402\\402_for_tag.edf',
+                'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\405\\405_for_tag.edf',
+                'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\406\\406_for_tag.edf',
+                'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\415\\415_for_tag.edf',
+                'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\416\\416_for_tag.edf']
 for subj in subjects_edf:
     raw = mne.io.read_raw_edf(subj)
     sampling_rate = int(raw.info['sfreq'])
-    for chan in raw['ch_names']:
+    for chan in raw.ch_names:
         chan_data = raw.copy().pick_channels([chan]).get_data()[0]
         for block_size in [3, 5, 10]:
             block_size_sec = block_size
             for curr_thresh in [3, 4, 5, 6, 7, 8, 9, 10]:
-                detect(chan_data, sampling_rate, curr_thresh, True)
+                detect(chan_data, sampling_rate, curr_thresh, False)
                 spikes_df = pd.DataFrame(spikes_list,
                                          columns=['threshold_type', 'first_index', 'last_index', 'max_index', 'max_amp'])
-                spikes_df['duration'] = spikes_df['last_index'] - spikes_df['first_index']
-                spikes_df = spikes_df.astype({"max_index": int})
-                spikes_df.to_csv('/'.join(subj.split('/')[:-1]) + f'/id_{chan}_{block_size}_{curr_thresh}')
-                spikes_df = []
+                # spikes_df['duration'] = spikes_df['last_index'] - spikes_df['first_index']
+                union_spikes = utils.union_spikes(spikes_df, min_distance, sampling_rate)
+                union_spikes.to_csv(subj.replace('.edf', '') + f'_{chan}_b{block_size}_t{curr_thresh}.csv')
+                spikes_list = []
+
+                print(f'finish thresh {curr_thresh}')
+                print(datetime.now())
 
         print(f'finish channel {chan}')
+        print(datetime.now())
 
     print(f'finish subj {subj}')
+    print(datetime.now())
+
 
