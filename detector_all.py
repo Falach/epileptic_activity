@@ -69,7 +69,7 @@ def get_markers(data, index_above_threshold, thresh_type, sr):
     return np.array(max_markers_index), np.array(max_marker_value)
 
 
-def detect(data, sampling_rate, thresh, plot=True):
+def detect(data, sampling_rate, thresh_amp, thresh_grad, thresh_env, plot=True):
     points_in_block = block_size_sec * sampling_rate
     number_of_blocks = math.floor(len(data) / points_in_block)
     max_markers_index_amp, max_markers_index_grad, max_markers_index_env, all_common_index, all_common_value = [], [], [], [], []
@@ -82,19 +82,19 @@ def detect(data, sampling_rate, thresh, plot=True):
         # check amplitude threshold
         if use_amp or use_amp_env or use_amp_grad:
             z_score_amp = stats.zscore(curr_block)
-            points_above_thresh_amp = z_score_amp[z_score_amp > thresh]
+            points_above_thresh_amp = z_score_amp[z_score_amp > thresh_amp]
             # get indexes from z_score values and add offset of the current block
             if len(points_above_thresh_amp) > 0:
-                index_above_threshold_amp = (z_score_amp > thresh).nonzero()[0] + i * points_in_block
+                index_above_threshold_amp = (z_score_amp > thresh_amp).nonzero()[0] + i * points_in_block
                 max_markers_index_amp, max_marker_value_amp = get_markers(data, index_above_threshold_amp, 'amp', sampling_rate)
 
         # check gradient threshold
         if use_grad or use_amp_grad:
             gradient_diff = np.diff(curr_block)
             z_score_grad = stats.zscore(np.insert(gradient_diff, 0, 0))
-            points_above_thresh_grad = z_score_grad[z_score_grad > thresh]
+            points_above_thresh_grad = z_score_grad[z_score_grad > thresh_grad]
             if len(points_above_thresh_grad) > 0:
-                index_above_threshold_grad = (z_score_grad > thresh).nonzero()[0] + i * points_in_block
+                index_above_threshold_grad = (z_score_grad > thresh_grad).nonzero()[0] + i * points_in_block
                 max_markers_index_grad, max_marker_value_grad = get_markers(data, index_above_threshold_grad, 'grad', sampling_rate)
 
         # check envelope threshold
@@ -102,9 +102,9 @@ def detect(data, sampling_rate, thresh, plot=True):
             filtered_block = mne.filter.filter_data(curr_block, sampling_rate, low_pass, high_pass)
             env_block = abs(signal.hilbert(filtered_block))
             z_score_env = stats.zscore(env_block)
-            points_above_thresh_env = z_score_env[z_score_env > thresh]
+            points_above_thresh_env = z_score_env[z_score_env > thresh_env]
             if len(points_above_thresh_env) > 0:
-                index_above_threshold_env = (z_score_env > thresh).nonzero()[0] + i * points_in_block
+                index_above_threshold_env = (z_score_env > thresh_env).nonzero()[0] + i * points_in_block
                 max_markers_index_env, max_marker_value_env = get_markers(data, index_above_threshold_env, 'env', sampling_rate)
 
         if plot:
@@ -137,31 +137,37 @@ def detect(data, sampling_rate, thresh, plot=True):
 
 # run all start
 print(datetime.now())
-subjects_edf = ['C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\396\\396_for_tag.edf',
+subjects_edf = [
+                'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\396\\396_for_tag.edf',
                 'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\398\\398_for_tag.edf',
                 'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\402\\402_for_tag.edf',
-                'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\405\\405_for_tag.edf',
+                # 'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\405\\405_for_tag.edf',
                 'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\406\\406_for_tag.edf',
                 'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\415\\415_for_tag.edf',
-                'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\416\\416_for_tag.edf']
+                'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\416\\416_for_tag.edf',
+                'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\34\\34_for_tag.edf',
+                'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\36\\36_for_tag.edf',
+                'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\37\\37_for_tag.edf'
+                ]
 for subj in subjects_edf:
     raw = mne.io.read_raw_edf(subj)
     sampling_rate = int(raw.info['sfreq'])
-    for chan in raw.ch_names:
+    for chan in [x for x in raw.ch_names if 'RA' in x or 'LA' in x]:
         chan_data = raw.copy().pick_channels([chan]).get_data()[0]
         for block_size in [3, 5, 10]:
             block_size_sec = block_size
-            for curr_thresh in [3, 4, 5, 6, 7, 8, 9, 10]:
-                detect(chan_data, sampling_rate, curr_thresh, False)
-                spikes_df = pd.DataFrame(spikes_list,
-                                         columns=['threshold_type', 'first_index', 'last_index', 'max_index', 'max_amp'])
-                # spikes_df['duration'] = spikes_df['last_index'] - spikes_df['first_index']
-                union_spikes = utils.union_spikes(spikes_df, min_distance, sampling_rate)
-                union_spikes.to_csv(subj.replace('.edf', '') + f'_{chan}_b{block_size}_t{curr_thresh}.csv')
-                spikes_list = []
+            for amp_thresh in [5, 6, 7, 8, 9, 10]:
+                for grad_thresh in [5, 6, 7, 8, 9, 10]:
+                    for env_thresh in [5, 6, 7, 8, 9, 10]:
+                        if not amp_thresh == grad_thresh == env_thresh:
+                            detect(chan_data, sampling_rate, amp_thresh, grad_thresh, env_thresh, False)
+                            spikes_df = pd.DataFrame(spikes_list,
+                                                     columns=['threshold_type', 'first_index', 'last_index', 'max_index', 'max_amp'])
+                            # spikes_df['duration'] = spikes_df['last_index'] - spikes_df['first_index']
+                            union_spikes = utils.union_spikes(spikes_df, min_distance, sampling_rate)
+                            union_spikes.to_csv(subj.replace('.edf', '') + f'_{chan}_b{block_size}_t{amp_thresh}_{grad_thresh}_{env_thresh}.csv')
+                            spikes_list = []
 
-                print(f'finish thresh {curr_thresh}')
-                print(datetime.now())
 
         print(f'finish channel {chan}')
         print(datetime.now())
