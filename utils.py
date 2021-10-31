@@ -338,21 +338,31 @@ def intersect_spikes_union_by_50():
 
 # intersect_spikes_union_by_50()
 
-def union_spikes(spikes_df, min_distance, sr):
+# union close spikes
+def union_spikes(spikes_df, min_distance_sec, sr):
     new_spikes_list = []
-    flag = False
-    any_union = False
+    flag, any_union = False, False
     for i, x in spikes_df.iterrows():
+        # prevent double unions
         for j, y in spikes_df[i + 1:].iterrows():
             # check distance between the peaks
-            if abs(x['max_index'] - y['max_index']) < sr / (1000 / min_distance):
-                max_index, max_amp = (x['max_index'], x['max_amp']) if x['max_amp'] > y['max_amp'] else (y['max_index'], y['max_amp'])
-                thresh_type = x['threshold_type'] if x['threshold_type'] == y['threshold_type'] else [x['threshold_type'], y['threshold_type']]
-                new_spikes_list.append(
-                    [thresh_type, min(x['first_index'], y['first_index']), max(x['last_index'], y['last_index']),
-                     max_index, max_amp, abs(x['first_index'] - y['first_index'])])
+            if abs(x['max_index'] - y['max_index']) / sr < min_distance_sec:
+                # more than one union with the current spike x
+                if flag:
+                    thresh_type = list(set(curr_union[0] + [y['threshold_type']]))
+                    max_index, max_amp = (curr_union[3], curr_union[4]) if abs(curr_union[4]) > abs(y['max_amp']) \
+                        else (y['max_index'], y['max_amp'])
+                    curr_union = [thresh_type, min(curr_union[1], y['first_index']), max(curr_union[2], y['last_index']),
+                         max_index, max_amp, abs(curr_union[1] - y['first_index'])]
+                else:
+                    thresh_type = list(set([x['threshold_type'], y['threshold_type']]))
+                    max_index, max_amp = (x['max_index'], x['max_amp']) if abs(x['max_amp']) > abs(y['max_amp']) \
+                            else (y['max_index'], y['max_amp'])
+                    curr_union = [thresh_type, min(x['first_index'], y['first_index']), max(x['last_index'], y['last_index']),
+                         max_index, max_amp, abs(x['first_index'] - y['first_index'])]
                 flag, any_union = True, True
         if flag:
+            new_spikes_list.append(curr_union)
             flag = False
         else:
             new_spikes_list.append(x.tolist())
@@ -364,3 +374,11 @@ def union_spikes(spikes_df, min_distance, sr):
     new_spikes_df = new_spikes_df.drop_duplicates(subset='max_index')
     new_spikes_df['duration'] = spikes_df['last_index'] - spikes_df['first_index']
     return new_spikes_df
+
+def crop_for_tag():
+    # this is the code that crop data for tagging
+    ids = ['34', '36', '37', '396', '398', '402', '405', '406', '415', '416']
+    start_in_minutes = [211, 186, 393, 18, 10, 9, 6, 116, 59, 132]
+
+    for id, start_time in zip(ids, start_in_minutes):
+        getattr(save_biploar, f'for_firas_{id}')(start_time, f'{id}_for_tag_250hz.edf')
