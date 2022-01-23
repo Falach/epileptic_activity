@@ -11,11 +11,11 @@ import pandas as pd
 # hypno_file = '/Users/rotemfalach/Documents/University/lab/PAT/ah8/AH8_hypno.txt'
 # raw = mne.io.read_raw_edf('/Users/rotemfalach/Documents/University/lab/PAT/ah8/AH8_SLEEP_20201125_155835.edf')
 # subject_id = 'ah8'
-hypno_file = '/Users/rotemfalach/Documents/University/lab/cjd/YZ_full_hypno.txt'
-raw = mne.io.read_raw_edf('/Users/rotemfalach/Documents/University/lab/cjd/YZ-OB9025_SLEEP2_20201129_234150_left_36.edf')
+hypno_file = '/Users/rotemfalach/Documents/University/lab/data/UCLA scoring/P406_hypno.txt'
+raw = mne.io.read_raw_edf('/Users/rotemfalach/Documents/University/lab/data/P406_overnightData.edf')
 subject_id = 'YZ'
 png_file_name = subject_id + '_f3.png'
-raw = raw.pick_channels(['EEG F3-RM'])  # pick electrode for spectrogram
+raw = raw.pick_channels(['EEG C3-REF'])  # pick electrode for spectrogram
 separate_NREM_power_spectrum = True  # set false if you want to see N2 and N3 together as NREM
 
 
@@ -117,32 +117,49 @@ hypno, sf_hypno = read_hypno(hypno_file, time=None, datafile=None)
 # this is a built in function to calculate sleep stats:
 sleep_stats = yasa.sleep_statistics(hypno, sf_hypno)
 
+# TODO: checkout this epoch fix!!
+hypno_file = '/Users/rotemfalach/Documents/University/lab/data/UCLA scoring/P406_hypno.txt'
+raw = mne.io.read_raw_edf('/Users/rotemfalach/Documents/University/lab/data/P406_overnightData.edf')
+raw.pick_channels(['SEEG RA1-REF', 'SEEG LA1-REF', 'SEEG RAH1-REF', 'SEEG RAH2-REF', 'SEEG LAH1-REF', 'SEEG LAH2-REF', 'EEG C3-REF',
+                   'EEG PZ-REF', 'EOG EOG1-REF', 'EOG EOG2-REF'])
+raw.resample(1000)
+
+# read hypnogram old format (1sec)
+hypno, sf_hypno = read_hypno(hypno_file, time=None, datafile=None)
+
+# plot the hypnogram nicely optional to save a file:
+# write_fig_hyp(hypno, sf_hypno, grid=True, ascolor=True, file=None)
+
+# this is a built in function to calculate sleep stats:
+sleep_stats = yasa.sleep_statistics(hypno, sf_hypno)
+
 # make raw object into epochs:
-epoch_length = 15  # in seconds
-hypno_win = np.asarray((hypno[0:hypno.size:epoch_length]))  # cut the hypnogram to the epochs
+epoch_length = 30  # in seconds
+# hypno_win = np.asarray((hypno[0:hypno.size:epoch_length]))  # cut the hypnogram to the epochs
 event_id = 1  # This is used to identify the events.
-dummy_events = mne.make_fixed_length_events(raw, id=event_id, duration=epoch_length)
+dummy_events = mne.make_fixed_length_events(raw, id=event_id, duration=epoch_length)[:len(hypno)]
 
 # incorporate the scoring into the events file:
-dummy_events = dummy_events if len(hypno_win) > len(dummy_events) else dummy_events[:(len(hypno_win) - 1), :]
-dummy_events[:, 2] = hypno_win[0:dummy_events.shape[0]]  # HERE I TRIMMED THE END OF HYPNOGRAM BECAUSE OF THE DISCREPANCY
+# dummy_events = dummy_events if len(hypno_win) > len(dummy_events) else dummy_events[:(len(hypno_win) - 1), :]
+dummy_events[:, 2] = hypno  # HERE I TRIMMED THE END OF HYPNOGRAM BECAUSE OF THE DISCREPANCY
 event_dict = {'W': 0, 'N1': 1, 'N2': 2, 'N3': 3, 'REM': 4, 'art': -1}
 # event_dict = {'W': 0, 'N1': 1, 'NREM': 2, 'REM': 4, 'art': -1}
 # epoch data into 30sec pieces:
 epochs = mne.Epochs(raw, events=dummy_events, event_id=event_dict, tmin=0,
                     tmax=30, baseline=(0, 0), on_missing='ignore')
+# epochs.drop(epochs['REM'].selection)
+# nrem_raw = mne.io.RawArray(np.concatenate(epochs.get_data(), axis=1), raw.info)
+# epochs.save('406_NREM.fif')
+# nrem_raw.export('406_NREM.edf')
+# write_edf('406_NREM2.edf', nrem_raw)
+# rotem_edf(nrem_raw, '406_NREM3.edf')
 
-# Have a look on epochs:
-y_scale = {'eeg': 10e-5, 'eog': 10e-5}
-epochs.plot(n_epochs=5, scalings=y_scale, event_id=event_dict)  # nice plot of the ephocs
-
-plt.close()
 
 # plot spectrogram with hypnogram:
 data_out = raw.get_data()
 hypno_up = oversample_hypno(hypno, data_out.shape[1])
-spectrogram_fig, gs, ax0, ax1 = plot_spectrogram(data_out[0, :], raw.info['sfreq'], hypno_up, trimperc=10)
-ax0.set(title=subject_id)
+# spectrogram_fig, gs, ax0, ax1 = plot_spectrogram(data_out[0, :], raw.info['sfreq'], hypno_up, trimperc=10)
+# ax0.set(title=subject_id)
 
 stage_spect_trls = [None] * len(event_dict)
 stage_spect_avg = [None] * len(event_dict)
