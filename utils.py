@@ -1,17 +1,12 @@
-import pyedflib
-from datetime import datetime, timezone, timedelta
 import mne
-from mne import viz
-import os
 import numpy as np
 from matplotlib import pyplot as plt
-from sklearn import preprocessing
 import pandas as pd
 # from visbrain.gui import Sleep
-from scipy.signal import detrend
 # from mff_to_edf import write_edf
 from mnelab.io.writers import write_edf
-
+import h5py
+import glob
 
 
 # epilepsy
@@ -393,8 +388,7 @@ def preprocess():
         raw.save(f'C:\\UCLA\\{subj}_cz+bi_full_filtered.fif')
         write_edf(f'C:\\UCLA\\{subj}_cz+bi_full_filtered.edf', raw)
 
-def from_mat_to_edf():
-    import h5py
+def from_nicolet_to_mat_to_edf():
     from mff_to_edf import write_edf as rotem_write_edf
 
     subj = '31'
@@ -419,4 +413,34 @@ def from_mat_to_edf():
                          phase='zero-double')
     mne_raw.filter(l_freq=0.1, h_freq=40, picks=scalp_chans, phase='zero-double')
     rotem_write_edf(mne_raw, f'P{subj}_full_filtered_{counter}.edf')
+    print()
+
+
+def from_mat_to_edf():
+    from mff_to_edf import write_edf as rotem_write_edf
+
+    subj = '486'
+    mne_raw = None
+    subj_files_list = glob.glob(f'C:\\Maya\\p{subj}\\MACRO\\*')
+    for curr_file in subj_files_list:
+        try:
+            f = h5py.File(curr_file, 'r')
+            data = f.get('data')
+            data = np.array(data)
+            ch_name_array = np.array([x for x in f['LocalHeader/origName']], dtype='uint16')
+            ch_name = ''
+            for x in ch_name_array:
+                ch_name += chr(x[0])
+            sfreq = np.array(f['LocalHeader/samplingRate'])[0][0]
+            info = mne.create_info(ch_names=[ch_name], sfreq=sfreq)
+            if mne_raw is None:
+                mne_raw = mne.io.RawArray(data.T, info)
+            else:
+                mne_raw.add_channels([mne.io.RawArray(data.T, info)])
+        except OSError:
+            pass
+    # mne_raw.crop(tmin=76 * 60, tmax=80 * 60)
+    mne_raw.load_data()
+    rotem_write_edf(mne_raw, f'P{subj}_sample_for_tag.edf')
+    # mne_raw.save(f'C:\\Maya\\p{subj}\\P{subj}.fif')
     print()
