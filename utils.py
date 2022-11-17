@@ -1,17 +1,12 @@
-import pyedflib
-from datetime import datetime, timezone, timedelta
 import mne
-from mne import viz
-import os
 import numpy as np
 from matplotlib import pyplot as plt
-from sklearn import preprocessing
 import pandas as pd
 # from visbrain.gui import Sleep
-from scipy.signal import detrend
 # from mff_to_edf import write_edf
 from mnelab.io.writers import write_edf
-
+import h5py
+import glob
 
 
 # epilepsy
@@ -382,3 +377,70 @@ def crop_for_tag():
 
     for id, start_time in zip(ids, start_in_minutes):
         getattr(save_biploar, f'for_firas_{id}')(start_time, f'{id}_for_tag_250hz.edf')
+
+def preprocess():
+    # save raw files after apply filter and notch
+    for subj in ['396', '398', '402', '405', '406', '415', '416']:
+        raw = mne.io.read_raw_edf(f'C:\\UCLA\\{subj}_cz+bi_full.edf')
+        raw.load_data()
+        raw.filter(l_freq=0.1, h_freq=500)
+        raw.notch_filter((60, 120, 180, 240), method='spectrum_fit')
+        raw.save(f'C:\\UCLA\\{subj}_cz+bi_full_filtered.fif')
+        write_edf(f'C:\\UCLA\\{subj}_cz+bi_full_filtered.edf', raw)
+
+def from_nicolet_to_mat_to_edf():
+    from mff_to_edf import write_edf as rotem_write_edf
+
+    subj = '31'
+    counter = '2'
+    f = h5py.File(f'C:\\Matlab\\D0{subj}_raw_v73_{counter}.mat', 'r')
+    data = f.get('dat')
+    data = np.array(data)
+    # ch_names = mne.io.read_raw_edf('C:\\Matlab\\D037_04_02_21b.edf').info['ch_names']
+    ch_names = pd.read_csv(f'C:\\Matlab\\D{subj}_chans.csv', header=None)
+    ch_names = [x.replace('\'', '') for x in ch_names.iloc[:, 0].tolist()]
+    sfreq = int(np.array(f.get('hdr/Fs'))[0][0])
+    info = mne.create_info(ch_names=ch_names, sfreq=sfreq)
+    mne_raw = mne.io.RawArray(data.T, info)
+    # mne_raw.plot()
+    scalp_chans = ['Pz', 'Fz', 'Cz']
+    depth_chans = ['RH 01', 'RH 02', 'RA 01', 'ROF 01', 'RAC 02', 'LOF 01']
+    mne_raw.pick_channels(scalp_chans + depth_chans)
+    mne_raw.load_data()
+    # zero phase prevent delay
+    mne_raw.filter(l_freq=0.1, h_freq=250, picks=depth_chans, phase='zero-double')
+    mne_raw.notch_filter((50, 100, 150, 200), picks=scalp_chans + depth_chans, method='spectrum_fit',
+                         phase='zero-double')
+    mne_raw.filter(l_freq=0.1, h_freq=40, picks=scalp_chans, phase='zero-double')
+    rotem_write_edf(mne_raw, f'P{subj}_full_filtered_{counter}.edf')
+    print()
+
+
+def from_mat_to_edf():
+    from mff_to_edf import write_edf as rotem_write_edf
+
+    subj = '486'
+    mne_raw = None
+    subj_files_list = glob.glob(f'C:\\Maya\\p{subj}\\MACRO\\*')
+    for curr_file in subj_files_list:
+        try:
+            f = h5py.File(curr_file, 'r')
+            data = f.get('data')
+            data = np.array(data)
+            ch_name_array = np.array([x for x in f['LocalHeader/origName']], dtype='uint16')
+            ch_name = ''
+            for x in ch_name_array:
+                ch_name += chr(x[0])
+            sfreq = np.array(f['LocalHeader/samplingRate'])[0][0]
+            info = mne.create_info(ch_names=[ch_name], sfreq=sfreq)
+            if mne_raw is None:
+                mne_raw = mne.io.RawArray(data.T, info)
+            else:
+                mne_raw.add_channels([mne.io.RawArray(data.T, info)])
+        except OSError:
+            pass
+    # mne_raw.crop(tmin=76 * 60, tmax=80 * 60)
+    mne_raw.load_data()
+    rotem_write_edf(mne_raw, f'P{subj}_sample_for_tag.edf')
+    # mne_raw.save(f'C:\\Maya\\p{subj}\\P{subj}.fif')
+    print()
