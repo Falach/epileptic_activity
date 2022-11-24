@@ -13,8 +13,11 @@ import joblib
 sr = 1000
 edf_path = 'C:\\Maya\\p%s\\P%s_fixed.edf'
 stim_path = 'C:\\Maya\\p%s\\p%s_stim_timing.csv'
-model = joblib.load('LGBM_AH_bi_maya.pkl')
-
+model_lgbm = joblib.load('LGBM_AH_bi_maya.pkl')
+model_rf = joblib.load('RF_AH_bi_maya.pkl')
+rates = {'n_spikes': [], 'duration_sec': [], 'rate': [], 'duration_20%': [], 'n_1_20%': [], 'n_2_20%': [],
+         'n_3_20%': [], 'n_4_20%': [], 'n_5_20%': [], 'rate_1_20%': [], 'rate_2_20%': [], 'rate_3_20%': [],
+         'rate_4_20%': [], 'rate_5_20%': []}
 
 def bandpower_from_psd_ndarray(psd, freqs, bands, relative=True):
     # Type checks
@@ -166,7 +169,10 @@ def format_raw(raw):
 def detect_spikes(raw, plot=False):
     x = format_raw(raw)
     features = calc_features(x, subj)
-    y = model.predict(features[model.feature_name_])
+    y_lgbm = model_lgbm.predict(features[model_lgbm.feature_name_])
+    y_rf = model_rf.predict(features[model_lgbm.feature_name_])
+    y = np.array(y_lgbm) + np.array(y_rf)
+    y[y == 2] = 1
     if plot:
         spikes_onsets = np.where(y == 1)[0] / 4
         raw.set_annotations(mne.Annotations(spikes_onsets, [0.25] * len(spikes_onsets), ['spike'] * len(spikes_onsets)))
@@ -199,9 +205,22 @@ def get_stim_starts(subj):
             stim_sessions.append((start, end))
     return stim_sessions
 
+def fill_row(raw):
+    spikes = detect_spikes(raw)
+    rates['n_spikes'].append(spikes.sum())
+    rates['duration_sec'].append(raw.n_times / sr)
+    rates['rate'].append(spikes.sum() / (raw.n_times / sr / 60))
+    len_20_percent = int(len(spikes) / 5)
+    duration_20_sec = len_20_percent / (sr / 250)
+    rates['duration_20%'].append(duration_20_sec)
+    for i in range(1, 6):
+        n_20 = spikes[len_20_percent * (i - 1): len_20_percent * i].sum()
+        rates[f'n_{str(i)}_20%'].append(n_20)
+        rates[f'rate_{str(i)}_20%'].append(n_20 / (duration_20_sec / 60))
+
 subj = '485'
 channels = ['RMH1', 'RMH2']
-# all_stim = format_stim(subj, raw.n_times)
+spikes_between_stims = []
 stim_sections_sec = get_stim_starts(subj)
 stim_start_sec = stim_sections_sec[0][0]
 stim_end_sec = stim_sections_sec[-1][1]
@@ -209,39 +228,19 @@ raw = mne.io.read_raw_edf(edf_path % (subj, subj)).pick_channels(channels)
 
 # get the 15 minutes starting 20 min before first stim spikes rate
 baseline_raw = raw.copy().crop(tmin=stim_start_sec - 60 * 20, tmax=stim_start_sec - 60 * 5)
-baseline_spikes = detect_spikes(baseline_raw, plot=True)
-rates = {'n_spikes': [], 'duration_sec': [], 'rate': [], 'duration_20%': [0], 'n_1_20%': [0], 'n_2_20%': [0],
-         'n_3_20%': [0], 'n_4_20%': [0], 'n_5_20%': [0], 'rate_1_20%': [0], 'rate_2_20%': [0], 'rate_3_20%': [0],
-         'rate_4_20%': [0], 'rate_5_20%': [0]}
-rates['n_spikes'].append(baseline_spikes.sum())
-rates['duration_sec'].append(baseline_raw.n_times / sr)
-rates['rate'].append(baseline_spikes.sum() / (baseline_raw.n_times / sr / 60))
-spikes_between_stims = []
+fill_row(baseline_raw)
 
 for i, (start, end) in enumerate(stim_sections_sec):
     if i + 1 < len(stim_sections_sec):
         # the stop is the time between the end of the curr section and the start of the next
-        curr_stop = raw.copy().crop(tmin=end, tmax=stim_sections_sec[i + 1][0])
+        fill_row(raw.copy().crop(tmin=end, tmax=stim_sections_sec[i + 1][0]))
     else:
         # 15 min after the last stim
-        curr_stop = raw.copy().crop(tmin=end, tmax=end + 60 * 15)
-    curr_spikes = detect_spikes(curr_stop)
-    spikes_between_stims.append(curr_spikes)
-    rates['n_spikes'].append(curr_spikes.sum())
-    rates['duration_sec'].append(curr_stop.n_times / sr)
-    rates['rate'].append(curr_spikes.sum() / (curr_stop.n_times / sr / 60))
-    len_20_percent = int(len(curr_spikes) / 5)
-    duration_20_sec = len_20_percent / (sr / 250)
-    rates['duration_20%'].append(duration_20_sec)
-    for i in range(1, 6):
-        n_20 = curr_spikes[len_20_percent * (i - 1): len_20_percent * i].sum()
-        rates[f'n_{str(i)}_20%'].append(n_20)
-        rates[f'rate_{str(i)}_20%'].append(n_20 / (duration_20_sec / 60))
-
-# plt.plot(np.concatenate)
+        fill_row(raw.copy().crop(tmin=end, tmax=end + 60 * 15))
 
 results_df = pd.DataFrame(rates)
 results_df.to_csv(f'results/{subj}_{channels[0]}_rates.csv')
+
 # draw the baseline before stim and after all stims
 plt.axhline(y=rates['rate'][0], color='b', linestyle='dashed', label='Before')
 plt.axhline(y=rates['rate'][len(results_df) - 1], color='r', linestyle='dashed', label='After')
