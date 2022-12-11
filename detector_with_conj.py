@@ -1,13 +1,12 @@
 import mne
 import numpy as np
-import matplotlib as mpl
 from matplotlib import pyplot as plt
 import math
 from scipy import stats, signal
-import itertools
 import pandas as pd
-import utils
+from pathlib import Path, PurePath
 from datetime import datetime
+
 # mpl.use('Agg')
 mne.set_log_level(False)
 
@@ -18,7 +17,7 @@ min_distance = 50  # minimal distance for 'different' spikes - in miliseconds
 # papers Andrillon et al(envelope condition) and Starestina et al(other conditions)
 threshold_env = 8  # threshold in standard deviations for the envelope after bandpass (HP)
 threshold_amp = 5  # threshold in standard deviations for the amplitude
-threshold_grad = 5 # threshold in standard deviations for the gradient
+threshold_grad = 5  # threshold in standard deviations for the gradient
 threshold_env_conj = 3
 threshold_amp_conj = 3
 threshold_grad_conj = 3
@@ -90,7 +89,8 @@ def detect(data, sampling_rate, thresh_amp, thresh_grad, thresh_env, plot=True):
             # get indexes from z_score values and add offset of the current block
             if len(points_above_thresh_amp) > 0:
                 index_above_threshold_amp = (z_score_amp > thresh_amp).nonzero()[0] + i * points_in_block
-                max_markers_index_amp, max_marker_value_amp = get_markers(data, index_above_threshold_amp, 'amp', sampling_rate)
+                max_markers_index_amp, max_marker_value_amp = get_markers(data, index_above_threshold_amp, 'amp',
+                                                                          sampling_rate)
 
         # check gradient threshold
         if use_grad or use_amp_grad:
@@ -100,7 +100,8 @@ def detect(data, sampling_rate, thresh_amp, thresh_grad, thresh_env, plot=True):
             points_above_low_thresh_grad = z_score_grad[z_score_grad > threshold_grad_conj]
             if len(points_above_thresh_grad) > 0:
                 index_above_threshold_grad = (z_score_grad > thresh_grad).nonzero()[0] + i * points_in_block
-                max_markers_index_grad, max_marker_value_grad = get_markers(data, index_above_threshold_grad, 'grad', sampling_rate)
+                max_markers_index_grad, max_marker_value_grad = get_markers(data, index_above_threshold_grad, 'grad',
+                                                                            sampling_rate)
 
         # check envelope threshold
         if use_env or use_amp_env:
@@ -111,7 +112,8 @@ def detect(data, sampling_rate, thresh_amp, thresh_grad, thresh_env, plot=True):
             points_above_low_thresh_env = z_score_env[z_score_env > threshold_env_conj]
             if len(points_above_thresh_env) > 0:
                 index_above_threshold_env = (z_score_env > thresh_env).nonzero()[0] + i * points_in_block
-                max_markers_index_env, max_marker_value_env = get_markers(data, index_above_threshold_env, 'env', sampling_rate)
+                max_markers_index_env, max_marker_value_env = get_markers(data, index_above_threshold_env, 'env',
+                                                                          sampling_rate)
 
         # check conjunction of amplitude and gradient with lower thresholds
         if use_amp_grad:
@@ -119,9 +121,12 @@ def detect(data, sampling_rate, thresh_amp, thresh_grad, thresh_env, plot=True):
                 index_above_low_threshold_amp = (z_score_amp > threshold_amp_conj).nonzero()[0] + i * points_in_block
                 index_above_low_threshold_grad = (z_score_grad > threshold_grad_conj).nonzero()[0] + i * points_in_block
                 # get the common indexes of the two thresholds
-                index_above_low_thresh_amp_grad = np.intersect1d(index_above_low_threshold_amp, index_above_low_threshold_grad)
+                index_above_low_thresh_amp_grad = np.intersect1d(index_above_low_threshold_amp,
+                                                                 index_above_low_threshold_grad)
                 if len(index_above_low_thresh_amp_grad) > 0:
-                    max_markers_index_amp_grad, max_marker_value_amp_grad = get_markers(data, index_above_low_thresh_amp_grad, 'amp_grad', sampling_rate)
+                    max_markers_index_amp_grad, max_marker_value_amp_grad = get_markers(data,
+                                                                                        index_above_low_thresh_amp_grad,
+                                                                                        'amp_grad', sampling_rate)
 
         # check conjunction of amplitude and envelope with lower thresholds
         if use_amp_env:
@@ -129,10 +134,12 @@ def detect(data, sampling_rate, thresh_amp, thresh_grad, thresh_env, plot=True):
                 index_above_low_threshold_amp = (z_score_amp > threshold_amp_conj).nonzero()[0] + i * points_in_block
                 index_above_low_threshold_env = (z_score_env > threshold_env_conj).nonzero()[0] + i * points_in_block
                 # get the common indexes of the two thresholds
-                index_above_low_thresh_amp_env = np.intersect1d(index_above_low_threshold_amp, index_above_low_threshold_env)
+                index_above_low_thresh_amp_env = np.intersect1d(index_above_low_threshold_amp,
+                                                                index_above_low_threshold_env)
                 if len(index_above_low_thresh_amp_env) > 0:
-                    max_markers_index_amp_grad, max_marker_value_amp_grad = get_markers(data, index_above_low_thresh_amp_env, 'amp_env', sampling_rate)
-
+                    max_markers_index_amp_grad, max_marker_value_amp_grad = get_markers(data,
+                                                                                        index_above_low_thresh_amp_env,
+                                                                                        'amp_env', sampling_rate)
 
         if plot:
             # find the points that are shared in all thresholds
@@ -164,46 +171,25 @@ def detect(data, sampling_rate, thresh_amp, thresh_grad, thresh_env, plot=True):
 
 # run all start
 print(datetime.now())
-subjects_edf = [
-                # 'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\396\\396_for_tag.edf',
-                # 'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\398\\398_for_tag.edf',
-                # 'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\402\\402_for_tag.edf',
-                # 'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\405\\405_for_tag.edf',
-                # 'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\406\\406_for_tag.edf',
-                # 'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\415\\415_for_tag.edf',
-                # 'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\416\\416_for_tag.edf',
-                # 'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\34\\34_for_tag.edf',
-                # 'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\36\\36_for_tag.edf',
-                # 'C:\\Users\\user\\PycharmProjects\\pythonProject\\results\\37\\37_for_tag.edf'
-                # '/Users/rotemfalach/Documents/University/lab/data/416_for_tag.edf'
-                '/Users/rotemfalach/Documents/University/lab/Lilach_new/396_for_tag_filtered_fix_tag.edf',
-                '/Users/rotemfalach/Documents/University/lab/Lilach_new/398_for_tag_filtered_fix_tag.edf',
-                '/Users/rotemfalach/Documents/University/lab/Lilach_new/402_for_tag_filtered_fix_tag.edf',
-                '/Users/rotemfalach/Documents/University/lab/Lilach_new/406_for_tag_filtered_fix_tag.edf',
-                '/Users/rotemfalach/Documents/University/lab/Lilach_new/415_for_tag_filtered_fix_tag.edf',
-                '/Users/rotemfalach/Documents/University/lab/Lilach_new/416_for_tag_filtered_fix_tag.edf'
-                ]
-for subj in subjects_edf:
-    raw = mne.io.read_raw_edf(subj)
+subjects = ['485', '486', '487']
+amp_thresh = 5
+grad_thresh = 5
+env_thresh = 8
+for subj in subjects:
+    dir = Path(f'C:\\Maya\\p{subj}')
+    fname1 = PurePath(dir, f"P{subj}_fixed.edf")
+    raw = mne.io.read_raw_edf(fname1)
     sampling_rate = int(raw.info['sfreq'])
-    for chan in [x for x in raw.ch_names if 'RAH' in x or 'LAH' in x]:
-        chan_data = raw.copy().pick_channels([chan]).resample(1000).get_data()[0]
-        amp_thresh = 5
-        grad_thresh = 5
-        env_thresh = 8
+    for chan in [x for x in raw.ch_names if 'RAH' in x or '-' in x]:
+        chan_data = raw.copy().pick_channels([chan]).get_data()[0]
         detect(chan_data, sampling_rate, amp_thresh, grad_thresh, env_thresh, False)
         spikes_df = pd.DataFrame(spikes_list,
                                  columns=['threshold_type', 'first_index', 'last_index', 'max_index', 'max_amp'])
-        # spikes_df['duration'] = spikes_df['last_index'] - spikes_df['first_index']
-        # union_spikes = utils.union_spikes(spikes_df, min_distance, sampling_rate)
-        spikes_df.to_csv(subj.replace('.edf', '') + f'_{chan}_maya_params.csv')
+        spikes_df.to_csv(PurePath(dir, f'detections_{chan}_thresh.csv'))
         spikes_list = []
-
 
         print(f'finish channel {chan}')
         print(datetime.now())
 
     print(f'finish subj {subj}')
     print(datetime.now())
-
-
