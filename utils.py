@@ -21,12 +21,6 @@ def get_thresh_id(name):
         return 3
 
 
-def save_as_fif():
-    raw = mne.io.read_raw_edf('/Users/rotemfalach/projects/epileptic_activity/results/D036/D036_15_01_21a.edf')
-    write_edf(mne_raw=raw, fname='example2.edf', overwrite=True)
-
-# save_as_fif()
-
 def simple_view():
     # edf = '/Users/rotemfalach/Documents/University/lab/EDFs_forRotem/P402_staging_PSG_and_intracranial_Mref_correct.txt.edf'
     raw = mne.io.read_raw_edf('/Users/rotemfalach/Documents/University/lab/EDFs_forRotem/better_sample_rate/P402_overnightData.edf')
@@ -393,37 +387,36 @@ def preprocess():
 def from_nicolet_to_mat_to_edf():
     from mff_to_edf import write_edf as rotem_write_edf
 
-    subj = '31'
-    counter = '2'
-    f = h5py.File(f'C:\\Matlab\\D0{subj}_raw_v73_{counter}.mat', 'r')
+    subj = '39'
+    f = h5py.File(f'D:\\Firas\\D0{subj}\\D0{subj}.mat', 'r')
     data = f.get('dat')
     data = np.array(data)
     # ch_names = mne.io.read_raw_edf('C:\\Matlab\\D037_04_02_21b.edf').info['ch_names']
-    ch_names = pd.read_csv(f'C:\\Matlab\\D{subj}_chans.csv', header=None)
+    ch_names = pd.read_csv(f'D:\\Firas\\D0{subj}\\D0{subj}_chans.csv', header=None)
     ch_names = [x.replace('\'', '') for x in ch_names.iloc[:, 0].tolist()]
     sfreq = int(np.array(f.get('hdr/Fs'))[0][0])
     info = mne.create_info(ch_names=ch_names, sfreq=sfreq)
     mne_raw = mne.io.RawArray(data.T, info)
     # mne_raw.plot()
-    scalp_chans = ['Pz', 'Fz', 'Cz']
-    depth_chans = ['RH 01', 'RH 02', 'RA 01', 'ROF 01', 'RAC 02', 'LOF 01']
-    mne_raw.pick_channels(scalp_chans + depth_chans)
-    mne_raw.load_data()
+    scalp_chans = ['Pz', 'Fz', 'Cz', 'EOG1', 'EOG2']
+    depth_chans = ['RAH1', 'RAH2', 'LAH1', 'LAH2', 'LA1']
+    # mne_raw.pick_channels(scalp_chans + depth_chans)
+    # mne_raw.load_data()
     # zero phase prevent delay
-    mne_raw.filter(l_freq=0.1, h_freq=250, picks=depth_chans, phase='zero-double')
-    mne_raw.notch_filter((50, 100, 150, 200), picks=scalp_chans + depth_chans, method='spectrum_fit',
-                         phase='zero-double')
-    mne_raw.filter(l_freq=0.1, h_freq=40, picks=scalp_chans, phase='zero-double')
-    rotem_write_edf(mne_raw, f'P{subj}_full_filtered_{counter}.edf')
+    # mne_raw.filter(l_freq=0.1, h_freq=250, picks=depth_chans, phase='zero-double')
+    # mne_raw.notch_filter((50, 100, 150, 200), picks=scalp_chans + depth_chans, method='spectrum_fit',
+    #                      phase='zero-double')
+    # mne_raw.filter(l_freq=0.1, h_freq=40, picks=scalp_chans, phase='zero-double')
+    rotem_write_edf(mne_raw, f'C:\\UCLA\\P{subj}_overnightData.edf')
     print()
 
+# from_nicolet_to_mat_to_edf()
 
-def from_mat_to_edf():
+def from_mat_to_edf(subj):
     from mff_to_edf import write_edf as rotem_write_edf
 
-    subj = '486'
     mne_raw = None
-    subj_files_list = glob.glob(f'C:\\Maya\\p{subj}\\MACRO\\*')
+    subj_files_list = glob.glob(f'D:\\Maya\\p{subj}\\MACRO\\*')
     for curr_file in subj_files_list:
         try:
             f = h5py.File(curr_file, 'r')
@@ -446,6 +439,7 @@ def from_mat_to_edf():
     rotem_write_edf(mne_raw, f'P{subj}_sample_for_tag.edf')
     # mne_raw.save(f'C:\\Maya\\p{subj}\\P{subj}.fif')
     print()
+
 
 def from_mat_to_edf_Hanna(subj='017', scalp='scoring'):
     mne_raw = None
@@ -472,7 +466,7 @@ def from_mat_to_edf_Hanna(subj='017', scalp='scoring'):
     if scalp is not None:
         scalp = mne.io.read_raw_edf(f'D:\\Hanna\\D{subj}\\d{subj}_scalp_250Hz.edf').resample(sfreq)
         scalp.load_data()
-        scalp_data = scalp.pick_channels(['Signal 0', 'Signal 1']).get_data()
+        scalp_data = scalp.pick_channels(['Signal 0', 'Signal 1', 'Signal 2', 'Signal 3', 'Signal 4']).get_data()
         mne_raw.load_data()
         if mne_raw.n_times < scalp_data.shape[1]:
             mne_raw.add_channels([mne.io.RawArray(scalp_data[:, :mne_raw.n_times], scalp.info)], force_update_info=True)
@@ -483,6 +477,10 @@ def from_mat_to_edf_Hanna(subj='017', scalp='scoring'):
     rotem_write_edf(mne_raw, f'D:\\Hanna\\D{subj}\\P{subj}_overnightData.edf')
     print()
 
+
+# from_mat_to_edf_Hanna()
+
+
 def from_mat_to_edf_Hanna_sio(subj='479'):
     mne_raw = None
     subj_files_list = glob.glob(f'D:\\Hanna\\D{subj}\\Macro\\*')
@@ -491,7 +489,7 @@ def from_mat_to_edf_Hanna_sio(subj='479'):
         try:
             f = sio.loadmat(curr_file)
             data = f['denoised_data']
-            data = np.array(data)
+            data = np.array(data).T
             ch_names = pd.read_csv(f'D:\\Hanna\\D{subj}\\montage.csv')
             macro_chans = ch_names[ch_names['IS_MACRO'] == 1]
             curr_name = macro_chans['LOCATION'][i].replace(' ', '')
@@ -508,126 +506,44 @@ def from_mat_to_edf_Hanna_sio(subj='479'):
     mne_raw.load_data()
     scalp = mne.io.read_raw_edf(f'D:\\Hanna\\D{subj}\\d{subj}_scalp_250Hz.edf').resample(sfreq)
     scalp.load_data()
-    scalp_data = scalp.pick_channels(['Signal 0', 'Signal 1', 'Signal 3', 'Signal 4', 'Signal 5']).get_data()
+    scalp_data = scalp.pick_channels(['Signal 0', 'Signal 1', 'Signal 3', 'Signal 4']).get_data()
     mne_raw.add_channels([mne.io.RawArray(scalp_data[:, :mne_raw.n_times], scalp.info)], force_update_info=True)
     rotem_write_edf(mne_raw, f'D:\\Hanna\\D{subj}\\P{subj}_overnightData.edf')
     print()
 
-# from_mat_to_edf_Hanna_sio(subj='489')
-from_mat_to_edf_Hanna(subj='025', scalp=None)
+# from_mat_to_edf_Hanna_sio(subj='018')
+# from_mat_to_edf_Hanna(subj='018')
 
-def calc_rate_per_chan(subjects):
-    for subj in subjects:
-        subj_files_list = glob.glob(f'C:\\repos\\epileptic_activity\\results\\{subj}*rates*')
-        rates_per_chan = {'channel': [], 'baseline': [], 'sum': []}
-        for i, curr_file in enumerate(subj_files_list):
-            ch_name = curr_file.split(f'{subj}_')[1].split('_rates')[0]
-            chan_rates = pd.read_csv(curr_file, index_col=0)
-            rates_per_chan['channel'].append(ch_name)
-            rates_per_chan['baseline'].append(chan_rates['rate'][0])
-            rates_per_chan['sum'].append(chan_rates['n_spikes'].sum())
 
-        df = pd.DataFrame(rates_per_chan)
-        df.to_csv(f'C:\\repos\\epileptic_activity\\results\\{subj}_chan_sum.csv')
+def from_mat_to_LFP_Hanna(subj='017'):
+    mne_raw = None
+    subj_files_list = glob.glob(f'D:\\Hanna\\D{subj}\\Micro\\*')
+    sfreq = 1000
+    ch_names = pd.read_csv(f'D:\\Hanna\\D{subj}\\montage.csv')
+    micro_chans = ch_names[ch_names['IS_MACRO'] == 0].reset_index()
+    for i, curr_file in enumerate(subj_files_list):
+        try:
+            if subj == '018':
+                f = sio.loadmat(curr_file)
+                data = f['denoised_data']
+            else:
+                f = h5py.File(curr_file, 'r')
+                data = f.get('denoised_data')
+            data = np.array(data)
+            curr_name = micro_chans['LOCATION'][i].replace(' ', '')
+            info = mne.create_info(ch_names=[curr_name], sfreq=sfreq)
+            if mne_raw is None:
+                mne_raw = mne.io.RawArray(data[:-10].T, info)
+            else:
+                if data.size != mne_raw.n_times:
+                    data = data[:min(mne_raw.n_times, data.size)]
+                mne_raw.add_channels([mne.io.RawArray(data.T, info)], force_update_info=True)
+        except Exception as e:
+            pass
 
-def plot_first_block(subj, channels, file_name):
-    blocks = []
-    for chan in channels:
-        chan_rates = pd.read_csv(f'C:\\repos\\epileptic_activity\\results\\{subj}_{chan}_rates.csv', index_col=0)
-        y_axis = [chan_rates['rate'][0],  # the previous stop baseline
-                  chan_rates['rate_1_20%'][1],
-                  chan_rates['rate_2_20%'][1],
-                  chan_rates['rate_3_20%'][1],
-                  chan_rates['rate_4_20%'][1],
-                  chan_rates['rate_5_20%'][1]]
-        blocks.append(y_axis)
+    rotem_write_edf(mne_raw, f'D:\\Hanna\\D{subj}\\P{subj}_overnightData_LFP.edf')
+    print()
 
-    avg_df = pd.DataFrame(blocks, columns=['0', '1', '2', '3', '4', '5'])
-    means = [avg_df[str(i)].mean() for i in range(0, 6)]
-    stds = [avg_df[str(i)].std() for i in range(0, 6)]
-    plt.errorbar(list(range(0, 6)), means, yerr=stds, capsize=5, fmt='-o', label='avg', color='black')
-    plt.title(f'{subj} - {file_name}')
-    plt.xlabel('Time point')
-    plt.ylabel('Spikes per minute')
-    plt.savefig(f'C:\\repos\\epileptic_activity\\results\\{subj}_{file_name}.png')
-    plt.clf()
 
-def plot_all_subjects_top_10(subjects, file_name):
-    all_avg = []
-    for subj in subjects:
-        df = pd.read_csv(f'C:\\repos\\epileptic_activity\\results\\{subj}_chan_sum.csv')
-        # Top 10
-        channels = df.sort_values(by='baseline', ascending=False).iloc[:10, :]['channel'].tolist()
-        blocks = []
-        for chan in channels:
-            chan_rates = pd.read_csv(f'C:\\repos\\epileptic_activity\\results\\{subj}_{chan}_rates.csv', index_col=0)
-            y_axis = [chan_rates['rate_5_20%'][0],  # the previous stop baseline
-                      chan_rates['rate_1_20%'][1],
-                      # chan_rates['rate_2_20%'][1],
-                      # chan_rates['rate_3_20%'][1],
-                      # chan_rates['rate_4_20%'][1],
-                      chan_rates['rate_5_20%'][1]]
-            blocks.append(y_axis)
-
-        avg_df = pd.DataFrame(blocks, columns=['baseline', '1 min', '5 min'])
-        means = [avg_df[i].mean() for i in ['baseline', '1 min', '5 min']]
-        all_avg.append(means)
-        stds = [avg_df[i].std() for i in ['baseline', '1 min', '5 min']]
-        plt.plot(['baseline', '1 min', '5 min'], means, 'o-')
-
-    # plt.plot()
-    plt.title(f'all subjects- {file_name}')
-    plt.xlabel('Time point')
-    plt.ylabel('Spikes per minute')
-    # plt.show()
-    plt.savefig(f'C:\\repos\\epileptic_activity\\results\\all_{file_name}.png')
-    plt.clf()
-
-def plot_all_subjects_frontal(subjects, file_name):
-    all_avg = []
-    for subj in subjects:
-        df = pd.read_csv(f'C:\\repos\\epileptic_activity\\results\\{subj}_chan_sum.csv')
-        # get frontal channels
-        channels = df[df['channel'].str.contains('F')]['channel'].tolist()
-        blocks = []
-        for chan in channels:
-            chan_rates = pd.read_csv(f'C:\\repos\\epileptic_activity\\results\\{subj}_{chan}_rates.csv', index_col=0)
-            y_axis = [chan_rates['rate_5_20%'][0],  # the previous stop baseline
-                      chan_rates['rate_1_20%'][1],
-                      # chan_rates['rate_2_20%'][1],
-                      # chan_rates['rate_3_20%'][1],
-                      # chan_rates['rate_4_20%'][1],
-                      chan_rates['rate_5_20%'][1]]
-            blocks.append(y_axis)
-
-        avg_df = pd.DataFrame(blocks, columns=['baseline', '1 min', '5 min'])
-        means = [avg_df[i].mean() for i in ['baseline', '1 min', '5 min']]
-        all_avg.append(means)
-        stds = [avg_df[i].std() for i in ['baseline', '1 min', '5 min']]
-        plt.plot(['baseline', '1 min', '5 min'], means, 'o-')
-
-    # plt.plot()
-    plt.title(f'all subjects- {file_name}')
-    plt.xlabel('Time point')
-    plt.ylabel('Spikes per minute')
-    # plt.show()
-    plt.savefig(f'C:\\repos\\epileptic_activity\\results\\all_{file_name}.png')
-    plt.clf()
-
-# calc rate per chan and plot top ten
-# subjects = ['485', '486', '487', '488', '489', '496', '497', '498', '505', '515', '538', '541', '544', '545']
-# frontal_stim = ['485', '486', '487', '488', '497', '498', '505', '515', '541', '544', '545']
-# temporal_stim = ['489', '490', '496', '538']
-# calc_rate_per_chan(subjects)
-# for subj in subjects:
-#     df = pd.read_csv(f'C:\\repos\\epileptic_activity\\results\\{subj}_chan_sum.csv')
-#     top_10 = df.sort_values(by='baseline', ascending=False).iloc[:10, :]['channel'].tolist()
-#     plot_first_block(subj, top_10, 'top_10')
-
-# for subj in frontal_stim:
-#     df = pd.read_csv(f'C:\\repos\\epileptic_activity\\results\\{subj}_chan_sum.csv')
-#     frontal_chans = df[df['channel'].str.contains('F')]['channel'].tolist()
-#     plot_first_block(subj, frontal_chans, 'frontal')
-
-# plot_all_subjects_top_10(subjects, 'top_10_block_1')
-# plot_all_subjects_frontal(frontal_stim, 'frontal_channels_block_1')
+for x in ['018']:
+    from_mat_to_LFP_Hanna(subj=x)
