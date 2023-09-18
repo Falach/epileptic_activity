@@ -9,6 +9,11 @@ import h5py
 import glob
 import scipy.io as sio
 from mff_to_edf import write_edf as rotem_write_edf
+from mnelab.io.writers import write_edf as mnelab_edf
+from scipy.interpolate import make_interp_spline
+from scipy.stats import kde
+import seaborn as sns
+
 
 
 # epilepsy
@@ -441,78 +446,94 @@ def from_mat_to_edf(subj):
     print()
 
 
-def from_mat_to_edf_Hanna(subj='017', scalp='scoring'):
+def from_mat_to_edf_Hanna(subj='017', scalp=None):
     mne_raw = None
     subj_files_list = glob.glob(f'D:\\Hanna\\D{subj}\\Macro\\*')
     sfreq = 1000
+    ch_names = pd.read_csv(f'D:\\Hanna\\D{subj}\\montage.csv')
+    macro_chans = ch_names[ch_names['IS_MACRO'] == 1]
+    scalp_chans = ch_names[ch_names['IS_SCALP'] == 1]['LOCATION'].tolist()
+    exclude_chans = ch_names[ch_names['EXCLUDE'] == 1]['LOCATION'].tolist()
     for i, curr_file in enumerate(subj_files_list):
         try:
             f = h5py.File(curr_file, 'r')
             data = f.get('denoised_data')
             data = np.array(data)
-            ch_names = pd.read_csv(f'D:\\Hanna\\D{subj}\\montage.csv')
-            macro_chans = ch_names[ch_names['IS_MACRO'] == 1]
-            curr_name = macro_chans['LOCATION'][i].replace(' ', '')
-            info = mne.create_info(ch_names=[curr_name], sfreq=sfreq)
-            if mne_raw is None:
-                mne_raw = mne.io.RawArray(data.T, info)
-            else:
-                if data.size > mne_raw.n_times:
-                    data = data[:mne_raw.n_times]
-                mne_raw.add_channels([mne.io.RawArray(data.T, info)])
+            chan_num = int(curr_file.split('_')[1].replace('.mat', ''))
+            curr_name = macro_chans[macro_chans['CHANNEL'] == chan_num]['LOCATION'].tolist()[0]
+             # = macro_chans['LOCATION'][chan_num].replace(' ', '')
+            if curr_name not in exclude_chans:
+                info = mne.create_info(ch_names=[curr_name], sfreq=sfreq)
+                if mne_raw is None:
+                    mne_raw = mne.io.RawArray(data.T, info)
+                else:
+                    if data.size > mne_raw.n_times:
+                        data = data[:mne_raw.n_times]
+                    mne_raw.add_channels([mne.io.RawArray(data.T, info)])
         except Exception as e:
             pass
 
-    if scalp is not None:
-        scalp = mne.io.read_raw_edf(f'D:\\Hanna\\D{subj}\\d{subj}_scalp_250Hz.edf').resample(sfreq)
-        scalp.load_data()
-        scalp_data = scalp.pick_channels(['Signal 0', 'Signal 1', 'Signal 2', 'Signal 3', 'Signal 4']).get_data()
-        mne_raw.load_data()
-        if mne_raw.n_times < scalp_data.shape[1]:
-            mne_raw.add_channels([mne.io.RawArray(scalp_data[:, :mne_raw.n_times], scalp.info)], force_update_info=True)
-        else:
-            mne_raw.crop(tmax=scalp_data.shape[1] / sfreq - 1)
-            mne_raw.add_channels([mne.io.RawArray(scalp_data[:, :mne_raw.n_times], scalp.info)], force_update_info=True)
 
-    rotem_write_edf(mne_raw, f'D:\\Hanna\\D{subj}\\P{subj}_overnightData.edf')
+    mne_raw.reorder_channels(sorted([x for x in mne_raw.ch_names if x not in scalp_chans]) + sorted(scalp_chans))
+    # if scalp is not None:
+    #     scalp = mne.io.read_raw_edf(f'D:\\Hanna\\D{subj}\\d{subj}_scalp_250Hz.edf').resample(sfreq)
+    #     scalp.load_data()
+    #     scalp_data = scalp.pick_channels(['Signal 0', 'Signal 1', 'Signal 2', 'Signal 3', 'Signal 4']).get_data()
+    #     mne_raw.load_data()
+    #     if mne_raw.n_times < scalp_data.shape[1]:
+    #         mne_raw.add_channels([mne.io.RawArray(scalp_data[:, :mne_raw.n_times], scalp.info)], force_update_info=True)
+    #     else:
+    #         mne_raw.crop(tmax=scalp_data.shape[1] / sfreq - 1)
+    #         mne_raw.add_channels([mne.io.RawArray(scalp_data[:, :mne_raw.n_times], scalp.info)], force_update_info=True)
+
+    # rotem_write_edf(mne_raw, f'D:\\Hanna\\D{subj}\\P{subj}_overnightData_fixed.edf')
+    write_edf(f'D:\\Hanna\\D{subj}\\P{subj}_overnightData_fixed_2.edf', mne_raw)
     print()
 
+from_mat_to_edf_Hanna(subj='025')
 
-# from_mat_to_edf_Hanna()
-
+# for subj in ['013', '017', '025']:
+#     from_mat_to_edf_Hanna(subj=subj)
 
 def from_mat_to_edf_Hanna_sio(subj='479'):
     mne_raw = None
     subj_files_list = glob.glob(f'D:\\Hanna\\D{subj}\\Macro\\*')
     sfreq = 1000
+    ch_names = pd.read_csv(f'D:\\Hanna\\D{subj}\\montage.csv')
+    macro_chans = ch_names[ch_names['IS_MACRO'] == 1]
+    scalp_chans = ch_names[ch_names['IS_SCALP'] == 1]['LOCATION'].tolist()
+    exclude_chans = ch_names[ch_names['EXCLUDE'] == 1]['LOCATION'].tolist()
     for i, curr_file in enumerate(subj_files_list):
         try:
             f = sio.loadmat(curr_file)
             data = f['denoised_data']
             data = np.array(data).T
-            ch_names = pd.read_csv(f'D:\\Hanna\\D{subj}\\montage.csv')
-            macro_chans = ch_names[ch_names['IS_MACRO'] == 1]
-            curr_name = macro_chans['LOCATION'][i].replace(' ', '')
-            info = mne.create_info(ch_names=[curr_name], sfreq=sfreq)
-            if mne_raw is None:
-                mne_raw = mne.io.RawArray(data, info)
-            else:
-                if data.size > mne_raw.n_times:
-                    data = data[:mne_raw.n_times]
-                mne_raw.add_channels([mne.io.RawArray(data, info)])
+            chan_num = int(curr_file.split('_')[1].replace('.mat', ''))
+            curr_name = macro_chans[macro_chans['CHANNEL'] == chan_num]['LOCATION'].tolist()[0]
+            if curr_name not in exclude_chans:
+                info = mne.create_info(ch_names=[curr_name], sfreq=sfreq)
+                if mne_raw is None:
+                    mne_raw = mne.io.RawArray(data, info)
+                else:
+                    if data.size > mne_raw.n_times:
+                        data = data[:mne_raw.n_times]
+                    mne_raw.add_channels([mne.io.RawArray(data, info)])
         except Exception as e:
             pass
 
-    mne_raw.load_data()
-    scalp = mne.io.read_raw_edf(f'D:\\Hanna\\D{subj}\\d{subj}_scalp_250Hz.edf').resample(sfreq)
-    scalp.load_data()
-    scalp_data = scalp.pick_channels(['Signal 0', 'Signal 1', 'Signal 3', 'Signal 4']).get_data()
-    mne_raw.add_channels([mne.io.RawArray(scalp_data[:, :mne_raw.n_times], scalp.info)], force_update_info=True)
-    rotem_write_edf(mne_raw, f'D:\\Hanna\\D{subj}\\P{subj}_overnightData.edf')
+    # mne_raw.load_data()
+    # scalp = mne.io.read_raw_edf(f'D:\\Hanna\\D{subj}\\d{subj}_scalp_250Hz.edf').resample(sfreq)
+    # scalp.load_data()
+    # scalp_data = scalp.pick_channels(['Signal 0', 'Signal 1', 'Signal 3', 'Signal 4']).get_data()
+    # mne_raw.add_channels([mne.io.RawArray(scalp_data[:, :mne_raw.n_times], scalp.info)], force_update_info=True)
+    mne_raw.reorder_channels(sorted([x for x in mne_raw.ch_names if x not in scalp_chans]) + sorted(scalp_chans))
+    rotem_write_edf(mne_raw, f'D:\\Hanna\\D{subj}\\P{subj}_overnightData_fixed.edf')
     print()
 
 # from_mat_to_edf_Hanna_sio(subj='018')
-# from_mat_to_edf_Hanna(subj='018')
+# from_mat_to_edf_Hanna_sio(subj='479')
+# from_mat_to_edf_Hanna_sio(subj='489')
+
 
 
 def from_mat_to_LFP_Hanna(subj='017'):
@@ -530,7 +551,8 @@ def from_mat_to_LFP_Hanna(subj='017'):
                 f = h5py.File(curr_file, 'r')
                 data = f.get('denoised_data')
             data = np.array(data)
-            curr_name = micro_chans['LOCATION'][i].replace(' ', '')
+            chan_num = int(curr_file.split('_')[1].replace('.mat', '')) - 1
+            curr_name = micro_chans['LOCATION'][chan_num].replace(' ', '')
             info = mne.create_info(ch_names=[curr_name], sfreq=sfreq)
             if mne_raw is None:
                 mne_raw = mne.io.RawArray(data[:-10].T, info)
@@ -541,9 +563,32 @@ def from_mat_to_LFP_Hanna(subj='017'):
         except Exception as e:
             pass
 
-    rotem_write_edf(mne_raw, f'D:\\Hanna\\D{subj}\\P{subj}_overnightData_LFP.edf')
+    mne_raw.reorder_channels(sorted([x for x in mne_raw.ch_names]))
+    rotem_write_edf(mne_raw, f'D:\\Hanna\\D{subj}\\P{subj}_overnightData_LFP_fixed.edf')
     print()
 
+# from_mat_to_LFP_Hanna(subj='025')
 
-for x in ['018']:
-    from_mat_to_LFP_Hanna(subj=x)
+def from_mat_to_units(subj='025'):
+    subj_files_list = glob.glob(f'D:\\Hanna\\D{subj}\\spikesorting\\*')
+    ch_names = pd.read_csv(f'D:\\Hanna\\D{subj}\\montage.csv')
+    micro_chans = ch_names[ch_names['IS_MACRO'] == 0].reset_index()
+    for i, curr_file in enumerate(subj_files_list):
+        try:
+            f = sio.loadmat(curr_file)
+            data = f['cluster_class']
+            data = np.array(data).astype('int')
+            # index start from 0
+            chan_num = int(curr_file.split('CSC')[1].replace('.mat',''))
+            curr_name = micro_chans['LOCATION'][chan_num - 1].replace(' ', '')
+            for i in range(1, 4):
+                data[data[:, 0] == i][:, 1].tolist()
+                curr_data = data[data[:, 0] == i]
+                if curr_data.size > 0:
+                    curr_data = curr_data[:, 1]
+                    np.savetxt(f'D:\\Hanna\\D{subj}\\spikesorting\\{curr_name}_unit{i}.csv', curr_data, delimiter=',', fmt="%d")
+        except Exception as e:
+            pass
+
+
+# from_mat_to_units()
